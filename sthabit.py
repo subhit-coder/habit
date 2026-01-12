@@ -6,12 +6,16 @@ import matplotlib.pyplot as plt
 # -----------------------------
 # DB connection
 # -----------------------------
+
+
 def get_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="123456",
-        database="habit_db"
+        host=st.secrets["mysql"]["host"],
+        user=st.secrets["mysql"]["user"],
+        password=st.secrets["mysql"]["password+"],
+        database=st.secrets["mysql"]["database"]
+    )
+
     )
 
 # -----------------------------
