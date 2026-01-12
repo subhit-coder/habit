@@ -1,18 +1,42 @@
 import streamlit as st
-import mysql.connector
+import sqlite3
 import pandas as pd
 import matplotlib.pyplot as plt
 
 # -----------------------------
-# DB connection
+# DB connection + bootstrap
 # -----------------------------
-
-
-import sqlite3
+DB_PATH = "habit_db.sqlite"
 
 def get_connection():
-    return sqlite3.connect("habit_db.sqlite")
-    
+    # SQLite file-based DB (repo ke andar)
+    return sqlite3.connect(DB_PATH)
+
+def init_db():
+    conn = get_connection()
+    cur = conn.cursor()
+    # Habits table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS habits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    # Logs table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            habit_id INTEGER NOT NULL,
+            date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (habit_id) REFERENCES habits(id)
+        )
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+
 # -----------------------------
 # Helpers
 # -----------------------------
@@ -20,35 +44,49 @@ def add_habit(habit_name: str):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        cur.execute("INSERT INTO habits (name) VALUES (%s)", (habit_name,))
+        # SQLite parameter placeholder = "?"
+        cur.execute("INSERT INTO habits (name) VALUES (?)", (habit_name,))
         conn.commit()
         return True, f"Habit '{habit_name}' added!"
-    except mysql.connector.Error as e:
-        return False, f"Could not add habit: {e.msg}"
+    except sqlite3.IntegrityError:
+        return False, f"Habit '{habit_name}' already exists."
+    except sqlite3.Error as e:
+        return False, f"Could not add habit: {e}"
     finally:
         cur.close()
         conn.close()
 
 def get_habits_df() -> pd.DataFrame:
     conn = get_connection()
-    df = pd.read_sql("SELECT id, name FROM habits ORDER BY name", conn)
+    # Use read_sql_query for SQLite
+    df = pd.read_sql_query("SELECT id, name FROM habits ORDER BY name", conn)
     conn.close()
     return df
 
 def log_habit(habit_name: str):
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id FROM habits WHERE name=%s", (habit_name,))
+
+    # Find habit id (SQLite placeholder "?")
+    cur.execute("SELECT id FROM habits WHERE name = ?", (habit_name,))
     row = cur.fetchone()
     if not row:
+        cur.close()
+        conn.close()
         return False, "Habit not found."
+
     habit_id = row[0]
+
     try:
-        cur.execute("INSERT INTO logs (habit_id, date) VALUES (%s, CURDATE())", (habit_id,))
+        # SQLite: use DATE('now') instead of CURDATE()
+        cur.execute(
+            "INSERT INTO logs (habit_id, date) VALUES (?, DATE('now'))",
+            (habit_id,)
+        )
         conn.commit()
         return True, f"Logged '{habit_name}' for today."
-    except mysql.connector.Error as e:
-        return False, f"Could not log habit: {e.msg}"
+    except sqlite3.Error as e:
+        return False, f"Could not log habit: {e}"
     finally:
         cur.close()
         conn.close()
@@ -62,16 +100,19 @@ def get_progress_df() -> pd.DataFrame:
         GROUP BY h.name
         ORDER BY h.name
     """
-    df = pd.read_sql(query, conn)
+    df = pd.read_sql_query(query, conn)
     conn.close()
     return df
 
 # -----------------------------
 # Streamlit UI
 # -----------------------------
+# Init DB on app start
+init_db()
+
 st.set_page_config(page_title="Habit Tracker", page_icon="🌱", layout="centered")
 
-# 🎨 Unique gradient theme applied everywhere
+# 🎨 Gradient theme
 custom_css = """
 <style>
 [data-testid="stAppViewContainer"] {
@@ -94,7 +135,7 @@ button, .stButton>button {
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-st.title("🌱 Habit Tracker (MySQL + Streamlit)")
+st.title("🌱 Habit Tracker (SQLite + Streamlit)")
 
 menu = st.sidebar.radio("Navigation", ["Add Habit", "Log Habit", "View Progress"])
 
@@ -145,7 +186,7 @@ elif menu == "View Progress":
         for _, row in df.iterrows():
             st.write(f"- **{row['habit']}**: {int(row['count'])} days completed")
 
-        # Bar chart with new theme colors
+        # Bar chart
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.bar(df["habit"], df["count"], color="#2575fc")
         ax.set_xlabel("Habits", color="#203a43")
@@ -155,4 +196,4 @@ elif menu == "View Progress":
         plt.yticks(color="#000000")
         st.pyplot(fig)
 
-st.caption("✨ Gradient theme applied everywhere. Ensure your MySQL database 'habit_db' exists.")
+st.caption("✨ Gradient theme applied everywhere.")
