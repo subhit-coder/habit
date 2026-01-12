@@ -16,7 +16,7 @@ def get_connection():
         database=st.secrets["mysql"]["database"]
     )
 
-    )
+    
 
 # -----------------------------
 # Helpers
