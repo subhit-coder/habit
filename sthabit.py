@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import sqlite3
 
 def get_connection():
-    return sqlite3.connect("habit_db.sqlite")2 se batao
+    return sqlite3.connect("habit_db.sqlite")
     
 # -----------------------------
 # Helpers
